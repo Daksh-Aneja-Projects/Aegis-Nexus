@@ -1,0 +1,200 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===== Base Styles ===== */
+@layer base {
+  :root {
+    --color-safe: theme('colors.emerald.500');
+    --color-warning: theme('colors.amber.500');
+    --color-danger: #ff2a2a;
+    --color-info: #00f2ff;
+    --neon-accent: #00f2ff;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased overflow-x-hidden;
+    font-feature-settings: 'liga' 1, 'calt' 1;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(0,242,255,0.03) 0%, transparent 50%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");
+  }
+
+  /* Premium scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-700/50 rounded-full transition-colors;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 242, 255, 0.3);
+  }
+}
+
+/* ===== Glass Components (Obsidian Engine) ===== */
+@layer components {
+
+  /* Premium glassmorphism panel */
+  .glass-panel {
+    @apply bg-white/10 backdrop-blur-xl border border-white/20;
+    box-shadow: 0 8px 32px 0 rgba(31,38,135,0.37);
+    background-image: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+  }
+
+  .glass-input {
+    @apply bg-gray-900/50 border border-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 backdrop-blur-md rounded-lg transition-all duration-300;
+  }
+
+  .neon-text {
+    text-shadow: 0 0 10px rgba(6, 182, 212, 0.7);
+  }
+
+  /* Level 1: The Deepest Layer (Dashboard Backgrounds) */
+  .glass-depth-1 {
+    @apply backdrop-blur-xl border border-white/5 rounded-3xl shadow-2xl;
+    background-color: rgba(10, 10, 12, 0.7);
+  }
+
+  /* Level 2: Interactive Panels (Cards, Widgets) */
+  .glass-depth-2 {
+    @apply bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl transition-all duration-500;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  }
+
+  .glass-depth-2:hover {
+    border-color: rgba(0, 242, 255, 0.2);
+  }
+
+  /* Level 3: Floating Elements (Modals, Tooltips) */
+  .glass-depth-3 {
+    @apply bg-white/10 backdrop-blur-2xl border border-white/20 rounded-xl z-50;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+
+  .glass-card {
+    @apply glass-depth-2 hover:-translate-y-1;
+  }
+
+  /* Obsidian Button */
+  .glass-button {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-lg px-4 py-2 font-medium tracking-wide transition-all duration-300;
+  }
+
+  .glass-button:hover {
+    background-color: rgba(0, 242, 255, 0.1);
+    color: var(--neon-accent);
+    border-color: rgba(0, 242, 255, 0.3);
+    box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
+  }
+
+  .glass-button:active {
+    transform: scale(0.98);
+  }
+
+  /* Neon Primary Button */
+  .btn-primary {
+    @apply relative overflow-hidden bg-transparent font-bold tracking-widest uppercase text-xs px-8 py-3 rounded-none transition-all duration-300;
+    border: 1px solid rgba(0, 242, 255, 0.5);
+    color: var(--neon-accent);
+    box-shadow: 0 0 20px rgba(0, 242, 255, 0.1);
+  }
+
+  .btn-primary:hover {
+    background-color: rgba(0, 242, 255, 0.1);
+    box-shadow: 0 0 30px rgba(0, 242, 255, 0.4);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.98);
+  }
+
+  .btn-primary::before {
+    content: '';
+    @apply absolute top-0 left-0 w-[2px] h-full opacity-0 transition-opacity duration-300;
+    background-color: var(--neon-accent);
+  }
+
+  .btn-primary:hover::before {
+    @apply opacity-100;
+  }
+
+  /* Code/terminal block - Hacker Style */
+  .code-block {
+    @apply font-mono text-sm bg-black/80 border-l-2 rounded-r-lg p-4 overflow-x-auto text-emerald-400 shadow-inner;
+    border-left-color: var(--neon-accent);
+  }
+
+  /* Status indicators */
+  .status-dot {
+    @apply w-2 h-2 rounded-full ring-2 ring-black;
+  }
+
+  .status-dot-safe {
+    @apply status-dot bg-emerald-500;
+    box-shadow: 0 0 10px theme('colors.emerald.500');
+  }
+
+  .status-dot-warning {
+    @apply status-dot bg-amber-500;
+    box-shadow: 0 0 10px theme('colors.amber.500');
+  }
+
+  .status-dot-danger {
+    @apply status-dot;
+    background-color: #ff2a2a;
+    box-shadow: 0 0 15px #ff2a2a;
+  }
+
+  /* Metric card with ambient glow */
+  .metric-card {
+    @apply glass-depth-2 p-6 relative overflow-hidden;
+  }
+
+  .metric-card::before {
+    content: '';
+    @apply absolute -right-10 -top-10 w-32 h-32 rounded-full opacity-20 transition-opacity duration-500;
+    filter: blur(60px);
+  }
+
+  .metric-card.safe::before {
+    @apply bg-emerald-500;
+  }
+
+  .metric-card.warning::before {
+    @apply bg-amber-500;
+  }
+
+  .metric-card.danger::before {
+    @apply bg-rose-500;
+  }
+}
+
+/* ===== Utilities ===== */
+@layer utilities {
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-500;
+  }
+
+  /* Shimmer effect for loading states */
+  .shimmer {
+    @apply bg-gradient-to-r from-transparent via-white/10 to-transparent;
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}

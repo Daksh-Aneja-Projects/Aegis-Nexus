@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-worker
+  namespace: aegis-nexus
+  labels:
+    app: aegis-nexus
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: aegis-worker
+  template:
+    metadata:
+      labels:
+        app: aegis-worker
+        component: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+    spec:
+      containers:
+      # === Main Worker Container ===
+      - name: worker
+        image: aegis-nexus/api:latest
+        imagePullPolicy: Always
+        command: ["arq", "core.worker.WorkerSettings"]
+        env:
+        - name: AEGIS_REDIS_HOST
+          value: "aegis-redis"
+        - name: AEGIS_ENV
+          value: "production"
+        - name: AEGIS_SECURITY_STRICT
+          value: "true"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://jaeger-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "aegis-worker"
+        - name: OTEL_ENABLED
+          value: "true"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"  # Z3 can be memory hungry
+            cpu: "2000m"
+        ports:
+        - containerPort: 9090
+          name: metrics
+      
+      # === CHAOS SIDECAR (Staging Only) ===
+      # Uncomment the following block for staging environments
+      # to enable continuous chaos testing of the Reality Anchor.
+      # 
+      # Prerequisites:
+      # 1. Apply chaos-sidecar-configmap.yaml first
+      # 2. Use namespace: aegis-staging
+      # 3. Set AEGIS_CHAOS_ENABLED=true in your CI/CD pipeline
+      #
+      # - name: chaos-sidecar
+      #   image: aegis-nexus/chaos:latest
+      #   imagePullPolicy: Always
+      #   resources:
+      #     requests:
+      #       memory: "128Mi"
+      #       cpu: "100m"
+      #     limits:
+      #       memory: "256Mi"
+      #       cpu: "200m"
+      #   env:
+      #   - name: CHAOS_ENABLED
+      #     valueFrom:
+      #       configMapKeyRef:
+      #         name: aegis-chaos-config
+      #         key: CHAOS_ENABLED
+      #   - name: CHAOS_MODE
+      #     value: "sidecar"
+      #   - name: CHAOS_INTENSITY
+      #     valueFrom:
+      #       configMapKeyRef:
+      #         name: aegis-chaos-config
+      #         key: CHAOS_INTENSITY
+      #   - name: CHAOS_ATTACK_MODE
+      #     valueFrom:
+      #       configMapKeyRef:
+      #         name: aegis-chaos-config
+      #         key: CHAOS_ATTACK_MODE
+      #   - name: CHAOS_TARGET_URL
+      #     value: "http://localhost:8000/api/v1/reality/ingest"
+      #   - name: CHAOS_KILL_ON_ACCEPT
+      #     valueFrom:
+      #       configMapKeyRef:
+      #         name: aegis-chaos-config
+      #         key: CHAOS_KILL_ON_ACCEPT
+      #   - name: CHAOS_METRICS_PORT
+      #     value: "9091"
+      #   ports:
+      #   - containerPort: 9091
+      #     name: chaos-metrics
+      #   livenessProbe:
+      #     httpGet:
+      #       path: /health
+      #       port: chaos-metrics
+      #     initialDelaySeconds: 10
+      #     periodSeconds: 30

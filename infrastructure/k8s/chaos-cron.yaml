@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aegis-chaos-monkey
+  namespace: aegis-nexus
+  labels:
+    app: aegis-chaos
+    component: immune-system
+spec:
+  schedule: "0 0 * * *" # Run at midnight every day
+  failedJobsHistoryLimit: 1
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: reality-fuzz
+            image: aegis-nexus-api:latest # Uses the API image which contains tools
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "tools.reality_fuzz"]
+            args: ["--duration", "60", "--intensity", "0.8", "--attack-mode", "gan", "--target", "http://aegis-api:8000/api/v1/reality/ingest"]
+            env:
+            - name: AEGIS_ENV
+              value: "production"
+          restartPolicy: OnFailure

@@ -1,0 +1,203 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  aegis-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - type: tmpfs
+        target: /run/secrets
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-aegis_nexus}
+      - AEGIS_REDIS_URL=redis://redis:6379/0
+      - AEGIS_ENV=${AEGIS_ENV:-development}
+      - DEBUG=False
+      # SECURITY: Read keys from RAM disk (tmpfs)
+      - AEGIS_VAULT_PATH=/run/secrets
+      - AEGIS_PQC_KEY_FILE=/run/secrets/pqc_key
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aegis-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # ZooKeeper for Leader Election (Gap 2)
+  zookeeper:
+    image: zookeeper:3.8
+    ports:
+      - "2181:2181"
+    environment:
+      ZOO_MY_ID: 1
+    networks:
+      - aegis-network
+    healthcheck:
+      test: [ "CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    # SECURITY PATCH: Pinned to 7.4-alpine to resolve CVE-2025-49844
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - aegis-network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      # SECURITY: Use env vars, never hardcode credentials
+      # Start with: POSTGRES_PASSWORD=your_secure_password docker-compose up
+      - POSTGRES_DB=${POSTGRES_DB:-aegis_nexus}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD environment variable is required}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/scripts/init_db.sh:/docker-entrypoint-initdb.d/init.sh
+    networks:
+      - aegis-network
+
+  # Frontend Service
+  aegis-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - aegis-api
+    networks:
+      - aegis-network
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:v2.40.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/configs/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - aegis-network
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:9.3.0
+    ports:
+      - "3001:3000"
+    environment:
+      # SECURITY: Use env var for admin password
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./infrastructure/configs/grafana_dashboards.json:/var/lib/grafana/dashboards/aegis-dashboard.json
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - aegis-network
+
+  # Adversarial Chaos Monkey
+  chaos-monkey:
+    image: python:3.9-slim
+    volumes:
+      - ./scripts/chaos_monkey.py:/app/chaos_monkey.py
+    command: python /app/chaos_monkey.py
+    environment:
+      - AEGIS_MODE=production
+      - CHAOS_INTENSITY=0.1
+    networks:
+      - aegis-network
+
+  # Level 5: Proprioceptive Drift Monitor (Hardware Health Sidecar)
+  hardware-health-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.api # Reuse API environment which has dependencies
+    command: python -m core.monitoring.hardware_health
+    environment:
+      - AEGIS_REDIS_HOST=redis
+      - AEGIS_REDIS_PORT=6379
+      - DRIFT_THRESHOLD=2.5
+    depends_on:
+      - redis
+    networks:
+      - aegis-network
+
+  # Hardware HSM Simulator (Gap 3)
+  # In production, this would be an AWS CloudHSM sidecar
+  vault-hsm-backend:
+    image: vault:1.13.1
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - aegis-network
+
+  # Persistent Adversarial GAN Service (Gap 4)
+  adversarial-gan:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: python -m core.security.adversarial_gan
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    depends_on:
+      - aegis-api
+      - redis
+    networks:
+      - aegis-network
+
+networks:
+  aegis-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

@@ -1,0 +1,190 @@
+# Chaos Sidecar Configuration
+# Aegis Nexus - Staging Environment Chaos Engineering
+#
+# This ConfigMap configures the chaos sidecar for automated chaos testing.
+# The chaos sidecar runs alongside the main application pods and continuously
+# injects anomalous data to test the Reality Anchor's resilience.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-chaos-config
+  namespace: aegis-staging
+  labels:
+    app: aegis-nexus
+    component: chaos-engineering
+data:
+  # === Core Settings ===
+  CHAOS_ENABLED: "true"
+  CHAOS_MODE: "sidecar"  # 'sidecar' for continuous, 'cli' for one-shot
+  
+  # === Attack Configuration ===
+  # Attack intensity: 0.0-1.0 (probability per tick)
+  CHAOS_INTENSITY: "0.3"
+  
+  # Attack mode: 'random' for basic noise, 'gan' for adversarial patterns
+  CHAOS_ATTACK_MODE: "gan"
+  
+  # Minimum difficulty for GAN attacks (0.0-1.0)
+  CHAOS_MIN_DIFFICULTY: "0.5"
+  
+  # === Target Configuration ===
+  # API endpoint to inject chaos payloads
+  CHAOS_TARGET_URL: "http://localhost:8000/api/v1/reality/ingest"
+  
+  # === Safety Controls ===
+  # Kill the sidecar (and trigger pod restart) if anomaly is accepted
+  CHAOS_KILL_ON_ACCEPT: "true"
+  
+  # === Metrics ===
+  # Prometheus metrics port for scraping
+  CHAOS_METRICS_PORT: "9090"
+  
+  # === Logging ===
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+
+---
+# Chaos Sidecar Deployment for Worker Pods
+# This shows the sidecar pattern - add this container to worker-deployment.yaml
+# when AEGIS_CHAOS_ENABLED=true
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aegis-chaos-sidecar-template
+  namespace: aegis-staging
+data:
+  sidecar-container.yaml: |
+    # Add this container to your pod spec when staging chaos testing
+    - name: chaos-sidecar
+      image: aegis-nexus/chaos:latest
+      imagePullPolicy: Always
+      resources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "256Mi"
+          cpu: "200m"
+      env:
+        - name: CHAOS_ENABLED
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_ENABLED
+        - name: CHAOS_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_MODE
+        - name: CHAOS_INTENSITY
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_INTENSITY
+        - name: CHAOS_ATTACK_MODE
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_ATTACK_MODE
+        - name: CHAOS_MIN_DIFFICULTY
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_MIN_DIFFICULTY
+        - name: CHAOS_TARGET_URL
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_TARGET_URL
+        - name: CHAOS_KILL_ON_ACCEPT
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_KILL_ON_ACCEPT
+        - name: CHAOS_METRICS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: aegis-chaos-config
+              key: CHAOS_METRICS_PORT
+      ports:
+        - containerPort: 9090
+          name: metrics
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: metrics
+        initialDelaySeconds: 10
+        periodSeconds: 30
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: metrics
+        initialDelaySeconds: 5
+        periodSeconds: 10
+
+---
+# ServiceMonitor for Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: aegis-chaos-monitor
+  namespace: aegis-staging
+  labels:
+    app: aegis-nexus
+spec:
+  selector:
+    matchLabels:
+      component: chaos-engineering
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics
+
+---
+# PodDisruptionBudget for chaos pods
+# Allow all pods to be disrupted since chaos is non-critical
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: aegis-chaos-pdb
+  namespace: aegis-staging
+spec:
+  maxUnavailable: 100%
+  selector:
+    matchLabels:
+      component: chaos-engineering
+
+---
+# CronJob for scheduled chaos campaigns
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aegis-chaos-campaign
+  namespace: aegis-staging
+spec:
+  schedule: "0 2 * * *"  # Run daily at 2 AM
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: chaos-campaign
+              image: aegis-nexus/chaos:latest
+              command:
+                - python
+                - tools/reality_fuzz.py
+                - --mode=cli
+                - --duration=300
+                - --intensity=0.7
+                - --attack-mode=gan
+                - --min-difficulty=0.7
+                - --kill-on-accept
+                - --target=http://aegis-api:8000/api/v1/reality/ingest
+              resources:
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+          restartPolicy: Never
+      backoffLimit: 3

@@ -1,0 +1,52 @@
+# Aegis Nexus Chaos Monkey Sidecar
+# Continuous Reality Fuzzing Container
+
+# ============================================
+# STAGE 1: Builder
+# ============================================
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies into virtualenv
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir aiohttp prometheus-client
+
+# ============================================
+# STAGE 2: Runtime
+# ============================================
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Install minimal runtime deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy chaos tool
+COPY tools/reality_fuzz.py /app/reality_fuzz.py
+
+# Create non-root user
+RUN useradd -m -r aegis && \
+    chown -R aegis:aegis /app
+
+USER aegis
+
+EXPOSE 9090
+
+HEALTHCHECK --interval=60s --timeout=5s --start-period=5s --retries=2 \
+    CMD curl -f http://localhost:9090/health || exit 1
+
+ENTRYPOINT ["python", "/app/reality_fuzz.py"]
+CMD ["--mode", "sidecar", "--intensity", "0.3", "--metrics-port", "9090"]

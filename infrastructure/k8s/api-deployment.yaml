@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aegis-api
+  namespace: aegis-nexus
+  labels:
+    app: aegis-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aegis-api
+  template:
+    metadata:
+      labels:
+        app: aegis-api
+    spec:
+      containers:
+      - name: api
+        image: aegis-nexus/api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        env:
+        - name: AEGIS_REDIS_HOST
+          value: "aegis-redis"
+        - name: AEGIS_ENV
+          value: "production"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://jaeger-collector:4317"
+        - name: OTEL_SERVICE_NAME
+          value: "aegis-api"
+        - name: OTEL_ENABLED
+          value: "true"
+        # PQC keys are now loaded from mounted secrets, not env vars
+        - name: AEGIS_PQC_KEY_PATH
+          value: "/secrets/pqc"
+        # Volume mounts for secrets (tmpfs - never written to disk)
+        volumeMounts:
+        - name: pqc-secrets
+          mountPath: /secrets/pqc
+          readOnly: true
+        - name: secret-scratch
+          mountPath: /tmp/secure
+          readOnly: false
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+        securityContext:
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+      # CSI Secret Store volumes - mounted as tmpfs (in-memory)
+      volumes:
+      - name: pqc-secrets
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: aegis-pqc-secrets
+      - name: secret-scratch
+        emptyDir:
+          medium: Memory  # tmpfs - never touches disk
+          sizeLimit: 10Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aegis-api
+  namespace: aegis-nexus
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8000
+  selector:
+    app: aegis-api
